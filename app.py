@@ -6,11 +6,11 @@ from ortools.sat.python import cp_model
 st.set_page_config(page_title="シフト管理", layout="wide")
 
 # -------------------------
-# UIデザイン
+# UI
 # -------------------------
 st.markdown("""
 <style>
-.main {background-color:#f5f6fa;}
+.main {background:#f5f6fa;}
 .card {
     background:white;
     padding:15px;
@@ -34,6 +34,8 @@ if "staffs" not in st.session_state:
 if "shift" not in st.session_state:
     st.session_state.shift = {}
 
+weekday = ["月","火","水","木","金","土","日"]
+
 # -------------------------
 # ログイン
 # -------------------------
@@ -47,11 +49,9 @@ role = me["role"]
 # メニュー
 # -------------------------
 if role == "店長":
-    menu = st.sidebar.radio("メニュー", ["シフト入力","メンバー管理","自動作成"])
+    menu = st.sidebar.radio("メニュー", ["メンバー管理","自動作成"])
 else:
     menu = "シフト入力"
-
-weekday = ["月","火","水","木","金","土","日"]
 
 # -------------------------
 # ⭕️△❌ボタン
@@ -71,7 +71,7 @@ def select_shift(key):
     return st.session_state[key]
 
 # -------------------------
-# メンバー管理
+# メンバー管理（店長のみ）
 # -------------------------
 if role == "店長" and menu == "メンバー管理":
 
@@ -96,7 +96,7 @@ if role == "店長" and menu == "メンバー管理":
         st.session_state.staffs[i]["can_register"] = reg
         st.session_state.staffs[i]["can_close"] = close
 
-        # 🔥 削除
+        # 削除
         if st.button(f"削除_{i}"):
             st.session_state.staffs.pop(i)
             st.rerun()
@@ -119,9 +119,9 @@ if role == "店長" and menu == "メンバー管理":
         st.rerun()
 
 # -------------------------
-# シフト入力
+# シフト入力（店長以外）
 # -------------------------
-if menu == "シフト入力":
+if role != "店長":
 
     st.title("📝 シフト入力")
 
@@ -132,36 +132,35 @@ if menu == "シフト入力":
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader(f"{d}（{weekday[d.weekday()]}）")
 
-        # 🔒 自分のみ（店長だけ全員）
-        targets = [user] if role != "店長" else [s["name"] for s in st.session_state.staffs]
+        st.write(f"👤 {user}")
 
-        for u in targets:
-            st.write(f"👤 {u}")
+        c1,c2 = st.columns(2)
+        with c1:
+            st.write("早番")
+            e = select_shift(f"{user}_{d}_e")
+        with c2:
+            st.write("遅番")
+            l = select_shift(f"{user}_{d}_l")
 
-            c1,c2 = st.columns(2)
-            with c1:
-                st.write("早番")
-                e = select_shift(f"{u}_{d}_e")
-            with c2:
-                st.write("遅番")
-                l = select_shift(f"{u}_{d}_l")
-
-            st.session_state.shift[(u,d,"e")] = e
-            st.session_state.shift[(u,d,"l")] = l
+        st.session_state.shift[(user,d,"e")] = e
+        st.session_state.shift[(user,d,"l")] = l
 
         st.markdown('</div>', unsafe_allow_html=True)
 
 # -------------------------
-# 自動生成
+# 自動生成（店長のみ）
 # -------------------------
 if role == "店長" and menu == "自動作成":
 
-    st.title("🤖 自動作成")
+    st.title("🤖 シフト自動作成")
+    st.info("店長はシフト入力不要です")
 
     if st.button("生成🔥"):
 
+        # 店長除外🔥
+        staff = [s for s in st.session_state.staffs if s["role"] != "店長"]
+
         model = cp_model.CpModel()
-        staff = st.session_state.staffs
         N = len(staff)
         dates = [date.today() + timedelta(days=i) for i in range(7)]
 
