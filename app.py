@@ -63,7 +63,7 @@ if role == "店長" and menu == "スタッフ管理":
 st.title("シフト入力")
 
 start = st.date_input("開始日", date.today())
-7days = 7
+days = 7
 dates = [start + timedelta(days=i) for i in range(days)]
 
 for d in dates:
