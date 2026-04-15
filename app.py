@@ -1,134 +1,82 @@
 import streamlit as st
-from ortools.sat.python import cp_model
+import pandas as pd
+from datetime import date, timedelta
 
-st.title("シフト自動作成アプリ🔥")
+# --- ページ設定 ---
+st.set_page_config(page_title="シフト管理アプリ", layout="wide")
 
-# ===== スタッフ設定 =====
-staffs = [
-    {"name": "社員A", "type": "社員", "register": True, "close": True},
-    {"name": "社員B", "type": "社員", "register": True, "close": True},
-    {"name": "パートA", "type": "パート", "register": True, "close": False},
-    {"name": "バイトA", "type": "バイト", "register": True, "close": False},
-    {"name": "バイトB", "type": "バイト", "register": False, "close": False},
-    {"name": "バイトC", "type": "バイト", "register": True, "close": True},
-]
+# --- 初期データ ---
+if "staffs" not in st.session_state:
+    st.session_state.staffs = ["田中", "佐藤"]
 
-days = ["月","火","水","木","金","土","日"]
+# --- サイドメニュー ---
+menu = st.sidebar.selectbox(
+    "メニュー",
+    ["🏠 ホーム", "📝 シフト作成", "👥 スタッフ管理"]
+)
 
-# ===== 入力 =====
-st.header("出勤希望（⭕️ / △ / ❌）")
+# ======================
+# 🏠 ホーム
+# ======================
+if menu == "🏠 ホーム":
+    st.title("📅 シフト管理アプリ")
+    st.write("左のメニューから選択してください")
 
-availability = {}
-for s in staffs:
-    availability[s["name"]] = {}
-    cols = st.columns(7)
-    for i, d in enumerate(days):
-        availability[s["name"]][d] = cols[i].selectbox(
-            f"{s['name']}-{d}",
-            ["❌","△","⭕️"],
-            index=0
-        )
+# ======================
+# 👥 スタッフ管理（店長用）
+# ======================
+elif menu == "👥 スタッフ管理":
+    st.title("👥 スタッフ管理")
 
-# ===== ボタン =====
-if st.button("シフト作成🔥"):
+    # 追加
+    new_staff = st.text_input("スタッフ名を追加")
+    if st.button("追加"):
+        if new_staff:
+            st.session_state.staffs.append(new_staff)
+            st.success(f"{new_staff} を追加しました")
 
-    model = cp_model.CpModel()
+    # 一覧
+    st.subheader("現在のスタッフ")
+    st.write(st.session_state.staffs)
 
-    shifts = ["早番","遅番"]
+    # 削除
+    delete_staff = st.selectbox("削除するスタッフ", st.session_state.staffs)
+    if st.button("削除"):
+        st.session_state.staffs.remove(delete_staff)
+        st.warning(f"{delete_staff} を削除しました")
 
-    # 必要人数
-    need = {}
-    for d in days:
-        if d in ["土","日"]:
-            need[(d,"早番")] = 4
-            need[(d,"遅番")] = 4
-        else:
-            need[(d,"早番")] = 3
-            need[(d,"遅番")] = 4
+# ======================
+# 📝 シフト作成
+# ======================
+elif menu == "📝 シフト作成":
+    st.title("📝 シフト作成")
 
-    # 変数
-    work = {}
-    for s in staffs:
-        for d in days:
-            for sh in shifts:
-                work[(s["name"], d, sh)] = model.NewBoolVar(f"{s['name']}_{d}_{sh}")
+    # 日付
+    start_date = st.date_input("開始日", date.today())
+    days = st.slider("日数", 1, 14, 7)
 
-    # ===== 制約 =====
+    dates = [start_date + timedelta(days=i) for i in range(days)]
 
-    # 人数
-    for d in days:
-        for sh in shifts:
-            model.Add(sum(work[(s["name"], d, sh)] for s in staffs) == need[(d,sh)])
+    shift_data = {}
 
-    # ❌は入れない
-    for s in staffs:
-        for d in days:
-            if availability[s["name"]][d] == "❌":
-                for sh in shifts:
-                    model.Add(work[(s["name"], d, sh)] == 0)
+    for name in st.session_state.staffs:
+        st.markdown(f"### {name}")
+        shift_data[name] = []
+        for d in dates:
+            choice = st.selectbox(
+                f"{d}",
+                ["⭕️", "△", "❌"],
+                key=f"{name}_{d}"
+            )
+            shift_data[name].append(choice)
 
-    # 社員は⭕️なら必ず入れる
-    for s in staffs:
-        if s["type"] == "社員":
-            for d in days:
-                if availability[s["name"]][d] == "⭕️":
-                    model.Add(
-                        sum(work[(s["name"], d, sh)] for sh in shifts) >= 1
-                    )
+    df = pd.DataFrame(shift_data, index=dates)
 
-    # パートは平日早番のみ
-    for s in staffs:
-        if s["type"] == "パート":
-            for d in days:
-                if d in ["土","日"]:
-                    for sh in shifts:
-                        model.Add(work[(s["name"], d, sh)] == 0)
-                else:
-                    model.Add(work[(s["name"], d, "遅番")] == 0)
+    # 個人表示
+    st.subheader("個人シフト")
+    selected = st.selectbox("名前を選択", st.session_state.staffs)
+    st.write(df[selected])
 
-    # レジ条件
-    for d in days:
-        # 早番
-        model.Add(
-            sum(work[(s["name"], d, "早番")] for s in staffs if s["register"]) >= 2
-        )
-        # 遅番
-        model.Add(
-            sum(work[(s["name"], d, "遅番")] for s in staffs if s["register"]) >= 2
-        )
-        model.Add(
-            sum(work[(s["name"], d, "遅番")] for s in staffs if s["close"]) >= 1
-        )
-
-    # ===== 目的関数 =====
-    objective_terms = []
-
-    for s in staffs:
-        for d in days:
-            for sh in shifts:
-                if availability[s["name"]][d] == "⭕️":
-                    objective_terms.append(work[(s["name"], d, sh)] * 10)
-                elif availability[s["name"]][d] == "△":
-                    objective_terms.append(work[(s["name"], d, sh)] * 3)
-
-    model.Maximize(sum(objective_terms))
-
-    # ===== 解く =====
-    solver = cp_model.CpSolver()
-    result = solver.Solve(model)
-
-    # ===== 出力 =====
-    if result == cp_model.OPTIMAL or result == cp_model.FEASIBLE:
-        st.success("完成🔥")
-
-        for d in days:
-            st.subheader(f"{d}")
-            for sh in shifts:
-                members = [
-                    s["name"]
-                    for s in staffs
-                    if solver.Value(work[(s["name"], d, sh)]) == 1
-                ]
-                st.write(f"{sh}：{', '.join(members)}")
-    else:
-        st.error("シフト作れない（条件きつい）")
+    # 全体
+    if st.button("全体表示"):
+        st.dataframe(df)
